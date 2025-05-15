@@ -1,6 +1,8 @@
 # KHANDLE-weighting
 
-This repository contains scripts associated with the paper: Hayes-Larson E, Mobley TM, Mungas D, Seamans M, Glymour MM, Gilsanz P, DeCarli C, Whitmer RA, Mayeda ER. Accounting for lack of representation in dementia research: Generalizing KHANDLE study findings on the prevalence of cognitive impairment to the California older population. Alzheimers Dement. 2022. doi: 10.1002/alz.12522. Online ahead of print. https://pubmed.ncbi.nlm.nih.gov/35102726/
+This repository contains code adapted from the original analysis by Hayes-Larson et al. (2022) which estimated the prevalence of cognitive impairment among older adults in California using KHANDLE and BRFSS data with survey weighting. This forked version replicates the original analysis but with a Multiracial category included the race/ethnicity classification. All code modifications, documentation, and analyses specific to this replication were conducted independently by Tracy Lam-Hine.
+
+Original publication: Hayes-Larson E, Mobley TM, Mungas D, Seamans M, Glymour MM, Gilsanz P, DeCarli C, Whitmer RA, Mayeda ER. Accounting for lack of representation in dementia research: Generalizing KHANDLE study findings on the prevalence of cognitive impairment to the California older population. Alzheimers Dement. 2022. doi: 10.1002/alz.12522. Online ahead of print. https://pubmed.ncbi.nlm.nih.gov/35102726/
 
 
 The scripts are:
