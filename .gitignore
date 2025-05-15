@@ -1,0 +1,16 @@
+# RStudio files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Personal paths
+config/config.R
+
+# Code not originally included in repo
+00_data-prep
+
+# Intermediate files
+*.Rdata
+*.csv
+*.xlsx
