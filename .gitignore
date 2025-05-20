@@ -9,6 +9,7 @@ config/config.R
 
 # Code not originally included in repo
 00_data-prep
+01_code/BRFSS_Import033120.sas
 
 # Intermediate files
 *.Rdata

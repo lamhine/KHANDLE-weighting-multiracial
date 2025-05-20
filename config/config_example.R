@@ -49,6 +49,7 @@ pacman::p_load(
   haven,
   data.table,
   survey,
+  srvyr,
   janitor,
   summarytools,
   tableone,
