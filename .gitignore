@@ -3,15 +3,26 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
 
-# Personal paths
+# Personal paths (contains Box paths specific to each user)
 config/config.R
 
-# Code not originally included in repo
-00_data-prep
-01_code/BRFSS_Import033120.sas
+# SAS import script (legacy)
+02_analysis/BRFSS_Import_033120.sas
 
-# Intermediate files
+# Intermediate/output files
 *.Rdata
 *.csv
 *.xlsx
+*.rds
+Rplots.pdf
+
+# Results are regenerated from pipeline
+03_results/figures/
+03_results/tables/
+03_results/supplement/
+03_results/t16_update/
+03_results/t10_replication/
+03_results/*.html
+03_results/*.pdf

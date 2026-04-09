@@ -1,0 +1,357 @@
+---
+title: "Population-based estimates of cognitive impairment among Multiracial older adults in California"
+author: "Tracy Lam-Hine, David H. Rehkopf, Paola Gilsanz, Maria M. Corrada, Rachel A. Whitmer"
+output:
+  pdf_document:
+    toc: true
+    fig_width: 8
+    fig_height: 5
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+source(here::here("config/config.R"))
+
+suppressPackageStartupMessages({
+  library(tidyr)
+})
+
+# --- Helper functions ---
+
+ci95 <- function(est, se, z = 1.96) {
+  tibble(ci_lo = est - z * se, ci_hi = est + z * se)
+}
+
+first_existing <- function(paths, required = TRUE, label = NULL) {
+  ok <- paths[file.exists(paths)]
+  if (length(ok) > 0) return(ok[1])
+  if (required) stop("Could not find required ", label %||% "file")
+  NA_character_
+}
+
+find_by_pattern <- function(dir, pattern, required = TRUE, label = NULL) {
+  hits <- list.files(dir, pattern = pattern, full.names = TRUE)
+  if (length(hits) > 0) return(hits[1])
+  if (required) stop("Could not find required ", label %||% "file", " in ", dir)
+  NA_character_
+}
+
+read_iosw_outputs <- function(tag, processed_parent_dir) {
+  p <- file.path(processed_parent_dir, tag)
+  files <- c(
+    overall = paste0("04_iosw_results_overall_", tag, ".rds"),
+    byrace  = paste0("04_iosw_results_by_race_", tag, ".rds"),
+    std     = paste0("04_iosw_results_standardized_", tag, ".rds"),
+    prpd    = paste0("04_iosw_results_pr_pd_", tag, ".rds")
+  )
+  paths <- setNames(file.path(p, files), names(files))
+  list(
+    overall = readRDS(paths["overall"]),
+    byrace  = readRDS(paths["byrace"]),
+    std     = readRDS(paths["std"]),
+    prpd    = readRDS(paths["prpd"]),
+    dir     = p
+  )
+}
+
+# --- Load results for active analysis_tag ---
+
+tag <- analysis_tag
+res <- read_iosw_outputs(tag, processed_data_parent_dir)
+tag_dir <- file.path(processed_data_parent_dir, tag)
+```
+
+## Background
+
+Multiracial older adults are a rapidly growing population in the U.S., yet they remain largely absent from population-based estimates of cognitive impairment. Cohort studies with detailed cognitive assessment often underrepresent Multiracial individuals, limiting population generalizability and obscuring subgroup heterogeneity. We applied methods for transporting cohort study results to a representative sample of older adults in California to estimate cognitive impairment prevalence among Multiracial individuals.
+
+## Methods
+
+We harmonized 2025 data from the Kaiser Healthy Aging and Different Life Experiences (KHANDLE) cohort with pooled 2019--2023 California Behavioral Risk Factor Surveillance System (BRFSS) data. Race and ethnicity were categorized as Asian, Black, Hispanic, White, or Multiracial. After multiple imputation, we developed inverse odds of selection weights to generalize KHANDLE to the marginal age-, sex-, and covariate distribution of California adults aged 65+, assessing covariate balance overall. Cognitive impairment was defined in KHANDLE using a validated probabilistic algorithm based on neuropsychological testing and adjudicated clinical diagnoses. Using weighted data, we estimated overall and race-specific marginal prevalence of cognitive impairment; we additionally estimated age- and sex-standardized prevalence ratios and differences relative to the BRFSS population.
+
+## Results
+
+```{r load-prevalence}
+# Overall prevalence (weighted)
+overall_wtd <- res$overall %>%
+  filter(stat == "Overall_weighted") %>%
+  mutate(est_pct = 100 * est,
+         ci_lo_pct = 100 * (est - 1.96 * se),
+         ci_hi_pct = 100 * (est + 1.96 * se))
+
+# By-race prevalence (weighted)
+byrace_wtd <- res$byrace %>%
+  filter(stat == "By_race_weighted") %>%
+  mutate(est_pct = 100 * est,
+         ci_lo_pct = 100 * (est - 1.96 * se),
+         ci_hi_pct = 100 * (est + 1.96 * se))
+
+fmt <- function(est, lo, hi) {
+  paste0(sprintf("%.1f", est), "% (95% CI: ", sprintf("%.1f", lo), "%--", sprintf("%.1f", hi), "%)")
+}
+
+get_race <- function(r) {
+  row <- byrace_wtd %>% filter(race == r)
+  fmt(row$est_pct, row$ci_lo_pct, row$ci_hi_pct)
+}
+```
+
+### Covariate Balance
+
+Generalizability weighting substantially improved overall covariate balance (Figure 1).
+
+```{r figure1, fig.cap="**Figure 1.** Marginal covariate balance (standardized mean differences) between Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and California Behavioral Risk Factor Surveillance System (CA-BRFSS), shown for unweighted and after applying weights to KHANDLE."}
+# Read overall covbal (true overall SMD, not averaged by-race)
+read_covbal <- function(tag_dir) {
+  prefixes <- c("03", "04")
+
+  # Prefer true overall files
+  unw_path <- first_existing(
+    file.path(tag_dir, paste0(prefixes, "_covbal_unweighted_overall_by_imp.rds")),
+    required = FALSE
+  )
+  wt_path <- first_existing(
+    file.path(tag_dir, paste0(prefixes, "_covbal_weighted_overall_by_imp.rds")),
+    required = FALSE
+  )
+
+  if (!is.na(unw_path) && !is.na(wt_path)) {
+    return(list(unw = readRDS(unw_path), wt = readRDS(wt_path)))
+  }
+
+  # Fallback to by-race
+  unw_path <- first_existing(
+    file.path(tag_dir, paste0(prefixes, "_covbal_unweighted_by_imp.rds")),
+    required = TRUE, label = "covbal unweighted"
+  )
+  wt_path <- first_existing(
+    file.path(tag_dir, paste0(prefixes, "_covbal_weighted_by_imp.rds")),
+    required = TRUE, label = "covbal weighted"
+  )
+  list(unw = readRDS(unw_path), wt = readRDS(wt_path))
+}
+
+covbal <- read_covbal(tag_dir)
+
+bind_covbal <- function(covbal_list, label) {
+  out <- lapply(names(covbal_list), function(k) {
+    df <- covbal_list[[k]]
+    if (is.null(df) || nrow(df) == 0) return(NULL)
+    df %>% mutate(imp = as.integer(k), stage = label)
+  })
+  bind_rows(out)
+}
+
+plotdat <- bind_rows(
+  bind_covbal(covbal$unw, "Unweighted"),
+  bind_covbal(covbal$wt,  "Weighted")
+) %>%
+  filter(!is.na(std.eff.sz)) %>%
+  group_by(var, stage) %>%
+  summarise(mean_smd = mean(std.eff.sz, na.rm = TRUE), .groups = "drop") %>%
+  mutate(stage = factor(stage, levels = c("Unweighted", "Weighted")))
+
+ggplot(plotdat, aes(x = mean_smd, y = reorder(var, abs(mean_smd)), colour = stage)) +
+  geom_vline(xintercept = 0) +
+  geom_point(size = 2.4, position = position_dodge(width = 0.35)) +
+  theme_bw(base_size = 12) +
+  labs(
+    x = "Standardized mean difference (KHANDLE \u2212 BRFSS) / SD[BRFSS]",
+    y = NULL,
+    colour = NULL
+  ) +
+  theme(legend.position = "bottom") +
+  coord_cartesian(xlim = c(-1, 1))
+```
+
+### Prevalence of Cognitive Impairment
+
+Estimated marginal prevalence of cognitive impairment weighted to BRFSS was `r fmt(overall_wtd$est_pct, overall_wtd$ci_lo_pct, overall_wtd$ci_hi_pct)` overall (Figure 2). Marginal prevalence varied across racial and ethnic groups, with higher estimates among Black (`r get_race("Black")`), Multiracial (`r get_race("Multiracial")`), and Asian (`r get_race("Asian")`) older adults compared with White (`r get_race("White")`) and Hispanic (`r get_race("Hispanic")`) older adults.
+
+```{r figure2, fig.cap="**Figure 2.** Estimates of cognitive impairment in unweighted Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and generalized to California Behavioral Risk Factor Surveillance System (CA-BRFSS), overall and by race/ethnicity."}
+allowed_order <- c("Overall", "Asian", "Black", "Hispanic", "Multiracial", "White")
+
+overall_tbl <- res$overall %>%
+  filter(stat %in% c("Overall_unweighted", "Overall_weighted")) %>%
+  transmute(
+    group = "Overall",
+    series = case_when(
+      stat == "Overall_unweighted" ~ "Unweighted KHANDLE",
+      stat == "Overall_weighted"   ~ "Generalized to BRFSS (weighted)"
+    ),
+    est, se
+  )
+
+byrace_tbl <- res$byrace %>%
+  filter(stat %in% c("By_race_unweighted", "By_race_weighted")) %>%
+  transmute(
+    group = race,
+    series = case_when(
+      stat == "By_race_unweighted" ~ "Unweighted KHANDLE",
+      stat == "By_race_weighted"   ~ "Generalized to BRFSS (weighted)"
+    ),
+    est, se
+  )
+
+prev_tbl <- bind_rows(overall_tbl, byrace_tbl) %>%
+  mutate(
+    group = factor(group, levels = allowed_order),
+    series = factor(series, levels = c("Unweighted KHANDLE", "Generalized to BRFSS (weighted)")),
+    est_pct = 100 * est,
+    ci_lo_pct = 100 * (est - 1.96 * se),
+    ci_hi_pct = 100 * (est + 1.96 * se)
+  )
+
+ggplot(prev_tbl, aes(x = group, y = est_pct, colour = series)) +
+  geom_point(position = position_dodge(width = 0.5), size = 2.5) +
+  geom_errorbar(
+    aes(ymin = ci_lo_pct, ymax = ci_hi_pct),
+    position = position_dodge(width = 0.5),
+    width = 0
+  ) +
+  theme_bw(base_size = 12) +
+  labs(x = NULL, y = "Prevalence (%)", colour = NULL) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+```
+
+### Prevalence Ratios and Differences vs. White
+
+Age- and sex-standardized prevalence ratios and differences were higher for Asian and Black older adults compared with White older adults; estimates for Hispanic and Multiracial adults were directionally similar but imprecise (Figure 3).
+
+```{r figure3, fig.width=11, fig.height=5.5, fig.cap="**Figure 3.** Age- and sex-adjusted prevalence ratios and differences in cognitive impairment in Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and generalized to California Behavioral Risk Factor Surveillance System (CA-BRFSS)."}
+# Load weighted + harmonized data for PR/PD computation
+wts_path <- find_by_pattern(tag_dir, "khandle_brfss_harmonized_weights.*\\.rds$",
+                            label = "weights stack")
+harm_path <- find_by_pattern(tag_dir, "02_khandle_brfss_harmonized\\.rds$|khandle_brfss_harmonized\\.rds$",
+                             label = "harmonized data")
+
+dat_wts  <- readRDS(wts_path)
+dat_harm <- readRDS(harm_path)
+
+outcome_var <- "cogimp_prob_fin_dx"
+
+# Compute per-imputation PR/PD with SEs
+dat_wts <- dat_wts %>%
+  mutate(
+    race_summary_f = factor(race_summary_h, levels = 1:5, labels = ALLOWED_RACE5),
+    agecat_h = make_agecat(age_h)
+  )
+dat_harm <- dat_harm %>% mutate(agecat_h = make_agecat(age_h))
+
+std_pops <- compute_std_populations(dat_harm)
+
+imps <- sort(unique(dat_wts$imp_h[!is.na(dat_wts$imp_h)]))
+
+prpd_out <- lapply(imps, function(j) {
+  d <- dat_wts %>% filter(imp_h == j, brfss_h == 0)
+  if (nrow(d) == 0) return(NULL)
+
+  cells_unw <- d %>%
+    filter(!is.na(agecat_h), !is.na(male_h)) %>%
+    group_by(race_summary_f, agecat_h, male_h) %>%
+    summarise(est = umean_se(.data[[outcome_var]])["est"],
+              se  = umean_se(.data[[outcome_var]])["se"], .groups = "drop")
+  std_unw <- standardize_from_cells_with_se(cells_unw, std_pops$khandle_std)
+
+  cells_wt <- d %>%
+    filter(!is.na(agecat_h), !is.na(male_h)) %>%
+    group_by(race_summary_f, agecat_h, male_h) %>%
+    summarise(est = wmean_se(.data[[outcome_var]], sw_final)["est"],
+              se  = wmean_se(.data[[outcome_var]], sw_final)["se"], .groups = "drop")
+  std_wt <- standardize_from_cells_with_se(cells_wt, std_pops$brfss_std)
+
+  ref_unw <- std_unw %>% filter(race_summary_f == REF_RACE)
+  ref_wt  <- std_wt  %>% filter(race_summary_f == REF_RACE)
+  if (nrow(ref_unw) == 0 || nrow(ref_wt) == 0) return(NULL)
+
+  make_prpd <- function(std_df, ref_row, series_label) {
+    p_ref <- ref_row$est_std[1]; se_ref <- ref_row$se_std[1]
+    std_df %>% mutate(
+      imp_h = j, series = series_label,
+      PR = est_std / p_ref, PD = est_std - p_ref,
+      se_PD = sqrt(se_std^2 + se_ref^2),
+      se_PR = sqrt((se_std^2)/(p_ref^2) + ((est_std^2)*(se_ref^2))/(p_ref^4))
+    ) %>% select(imp_h, race_summary_f, series, PR, PD, se_PR, se_PD)
+  }
+
+  bind_rows(
+    make_prpd(std_unw, ref_unw, "Unweighted KHANDLE"),
+    make_prpd(std_wt,  ref_wt,  "Generalized to BRFSS (weighted)")
+  )
+}) %>% bind_rows()
+
+# Summarise with Rubin's rules
+prpd_summary <- prpd_out %>%
+  mutate(
+    race = as.character(race_summary_f),
+    comparison = paste0(race, " vs ", REF_RACE),
+    series = factor(series, levels = c("Unweighted KHANDLE", "Generalized to BRFSS (weighted)"))
+  ) %>%
+  filter(race != REF_RACE) %>%
+  pivot_longer(cols = c(PR, PD, se_PR, se_PD), names_to = "name", values_to = "value") %>%
+  mutate(
+    measure = case_when(name %in% c("PR", "se_PR") ~ "PR", name %in% c("PD", "se_PD") ~ "PD"),
+    field   = case_when(name %in% c("PR", "PD") ~ "est", name %in% c("se_PR", "se_PD") ~ "se")
+  ) %>%
+  filter(!is.na(measure), !is.na(field)) %>%
+  select(-name) %>%
+  pivot_wider(names_from = field, values_from = value) %>%
+  group_by(series, race, comparison, measure) %>%
+  summarise(rubin_combine(est = est, se = se), .groups = "drop") %>%
+  bind_cols(ci95(.$est, .$se)) %>%
+  mutate(
+    est_plot = if_else(measure == "PD", 100 * est, est),
+    lo_plot  = if_else(measure == "PD", 100 * ci_lo, ci_lo),
+    hi_plot  = if_else(measure == "PD", 100 * ci_hi, ci_hi)
+  )
+
+# Plot
+desired <- c("Asian vs White", "Black vs White", "Hispanic vs White", "Multiracial vs White")
+ref_lines <- tibble(
+  measure = factor(c("PR", "PD"), levels = c("PR", "PD")),
+  y0 = c(1, 0)
+)
+
+prpd_summary %>%
+  mutate(
+    comparison = factor(comparison, levels = desired),
+    series = factor(series, levels = c("Unweighted KHANDLE", "Generalized to BRFSS (weighted)")),
+    measure = factor(measure, levels = c("PR", "PD"))
+  ) %>%
+  ggplot(aes(x = comparison, y = est_plot, colour = series)) +
+  geom_hline(data = ref_lines, aes(yintercept = y0)) +
+  geom_pointrange(
+    aes(ymin = lo_plot, ymax = hi_plot),
+    position = position_dodge(width = 0.5),
+    linewidth = 0.6
+  ) +
+  facet_wrap(~ measure, scales = "free_y", nrow = 1) +
+  theme_bw(base_size = 12) +
+  labs(x = NULL, y = NULL, colour = NULL) +
+  theme(legend.position = "bottom")
+```
+
+## Conclusions
+
+Generalizability weighting enables population-representative inference from cohort studies while preserving subgroup detail for understudied populations. These analyses provide the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in California. Wider confidence intervals highlight persistent underrepresentation and the need for greater inclusion of Multiracial individuals in cognitive aging research and surveillance.
+
+---
+
+```{r prevalence-table}
+prev_display <- prev_tbl %>%
+  filter(series == "Generalized to BRFSS (weighted)") %>%
+  transmute(
+    Group = group,
+    `Prevalence (%)` = sprintf("%.1f", est_pct),
+    `95% CI` = paste0(sprintf("%.1f", ci_lo_pct), " -- ", sprintf("%.1f", ci_hi_pct))
+  )
+
+knitr::kable(prev_display,
+             caption = "Generalized prevalence of cognitive impairment by race/ethnicity, weighted to CA-BRFSS",
+             align = c("l", "r", "r"))
+```
