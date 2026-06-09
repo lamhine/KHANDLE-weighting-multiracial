@@ -151,9 +151,12 @@ plotdat <- bind_rows(
   filter(!is.na(std.eff.sz)) %>%
   group_by(var, stage) %>%
   summarise(mean_smd = mean(std.eff.sz, na.rm = TRUE), .groups = "drop") %>%
-  mutate(stage = factor(stage, levels = c("Unweighted", "Weighted")))
+  mutate(
+    stage = factor(stage, levels = c("Unweighted", "Weighted")),
+    var_label = pretty_covar_factor(var)
+  )
 
-ggplot(plotdat, aes(x = mean_smd, y = reorder(var, abs(mean_smd)), colour = stage)) +
+ggplot(plotdat, aes(x = mean_smd, y = var_label, colour = stage)) +
   geom_vline(xintercept = 0) +
   geom_point(size = 2.4, position = position_dodge(width = 0.35)) +
   theme_bw(base_size = 12) +

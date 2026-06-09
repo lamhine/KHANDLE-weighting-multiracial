@@ -4,6 +4,43 @@
 # Extracted from 03_weight_development.R
 #------------------------------------------------------------------
 
+#' Plain-English labels for harmonized covariates shown in Figure 1.
+#' Order matches Hayes-Larson 2022 Table 1.
+COVAR_LABELS <- c(
+  "age_h"             = "Age (years)",
+  "male_h"            = "Male sex",
+  "education3_h=1"    = "Education: less than high school",
+  "education3_h=2"    = "Education: high school diploma/GED",
+  "education3_h=3"    = "Education: trade school/some college",
+  "education3_h=4"    = "Education: college graduate or higher",
+  "income_gtmed_pp_h" = "Per-capita income above BRFSS median",
+  "marital_h"         = "Married/living with partner",
+  "military_h"        = "Military service",
+  "goodhealth_h"      = "Self-rated health good or better",
+  "adl_walking_h"     = "Difficulty walking/climbing stairs",
+  "blind_h"           = "Blind or vision impairment",
+  "adl_dressing_h"    = "Difficulty dressing",
+  "smoke_status_h"    = "Current smoker",
+  "exercise_h"        = "Exercised in last month"
+)
+
+#' Map raw covariate names (incl. factor level suffixes like "education3_h=1")
+#' to plain-English labels. Unknown names pass through unchanged.
+pretty_covar_labels <- function(var) {
+  out <- COVAR_LABELS[var]
+  ifelse(is.na(out), var, out)
+}
+
+#' Return a factor with display order matching Hayes-Larson 2022 Table 1.
+#' Unknown labels are appended at the end. Reverses for ggplot so that the
+#' first variable above appears at the top of the y-axis.
+pretty_covar_factor <- function(var) {
+  labels <- pretty_covar_labels(var)
+  known  <- unname(COVAR_LABELS)
+  unknown <- setdiff(unique(labels), known)
+  factor(labels, levels = rev(c(known, unknown)))
+}
+
 #' Coerce to 0/1 numeric (handles factors/characters)
 as01_num <- function(x) {
   if (is.factor(x)) x <- as.character(x)
