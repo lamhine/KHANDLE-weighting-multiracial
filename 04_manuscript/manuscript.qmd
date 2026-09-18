@@ -1,11 +1,11 @@
 ---
 format:
   docx:
-    reference-doc: "/Users/lamhine/Documents/GitHub/manuscript-templates/manuscript-reference.docx"
+    reference-doc: "/Users/lamhine/GitHub/manuscript-templates/manuscript-reference.docx"
     number-sections: false
     fig-dpi: 300
 bibliography: references.bib
-csl: "/Users/lamhine/Documents/GitHub/manuscript-templates/american-medical-association.csl"
+csl: "/Users/lamhine/GitHub/manuscript-templates/american-medical-association.csl"
 link-citations: false
 link-bibliography: false
 execute:
