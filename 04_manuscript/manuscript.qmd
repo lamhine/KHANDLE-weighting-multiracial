@@ -1,0 +1,612 @@
+---
+format:
+  docx:
+    reference-doc: "/Users/lamhine/Documents/GitHub/manuscript-templates/manuscript-reference.docx"
+    number-sections: false
+    fig-dpi: 300
+bibliography: references.bib
+csl: "/Users/lamhine/Documents/GitHub/manuscript-templates/american-medical-association.csl"
+link-citations: false
+link-bibliography: false
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: "png"
+    dpi: 300
+---
+
+```{r setup}
+#| include: false
+
+library(dplyr)
+library(tidyr)
+library(here)
+library(flextable)
+library(tibble)
+
+source(here("config", "config.R"))
+
+# --- Formatters ---
+
+fmt_pct <- function(est, lo, hi) {
+  paste0(sprintf("%.1f", est), "% (95% CI: ",
+         sprintf("%.1f", lo), "%, ", sprintf("%.1f", hi), "%)")
+}
+
+fmt_pr <- function(est, lo, hi) {
+  paste0(sprintf("%.2f", est), " (95% CI: ",
+         sprintf("%.2f", lo), ", ", sprintf("%.2f", hi), ")")
+}
+
+fmt_pd <- function(est, lo, hi) {
+  paste0(sprintf("%.1f", est), " pp (95% CI: ",
+         sprintf("%.1f", lo), ", ", sprintf("%.1f", hi), ")")
+}
+
+fmt_n    <- function(n) format(n, big.mark = ",")
+fmt_pctn <- function(p) sprintf("%.1f", 100 * p)
+
+# --- Load IOSW outputs ---
+
+tag     <- analysis_tag
+tag_dir <- file.path(processed_data_parent_dir, tag)
+
+res <- list(
+  overall = readRDS(file.path(tag_dir, paste0("04_iosw_results_overall_",     tag, ".rds"))),
+  byrace  = readRDS(file.path(tag_dir, paste0("04_iosw_results_by_race_",     tag, ".rds"))),
+  std     = readRDS(file.path(tag_dir, paste0("04_iosw_results_standardized_", tag, ".rds"))),
+  prpd    = readRDS(file.path(tag_dir, paste0("04_iosw_results_pr_pd_",       tag, ".rds")))
+)
+
+# --- Sample sizes from harmonized data (imp_h == 1 deduplicates) ---
+
+dat_harm <- readRDS(file.path(tag_dir, "02_khandle_brfss_harmonized.rds"))
+dat_wts  <- readRDS(file.path(tag_dir, "03_khandle_brfss_harmonized_weights.rds"))
+
+sample_slice <- dat_harm %>% filter(imp_h == 1)
+
+n_khandle <- sample_slice %>% filter(brfss_h == 0) %>% nrow()
+n_brfss   <- sample_slice %>% filter(brfss_h == 1) %>% nrow()
+
+n_mr_khandle <- sample_slice %>% filter(brfss_h == 0, race_summary_h == 5) %>% nrow()
+n_mr_brfss   <- sample_slice %>% filter(brfss_h == 1, race_summary_h == 5) %>% nrow()
+
+pct_mr_khandle <- n_mr_khandle / n_khandle
+pct_mr_brfss   <- n_mr_brfss   / n_brfss
+
+# --- Overall + by-race prevalence (weighted, on percentage scale) ---
+
+overall_wtd <- res$overall %>%
+  filter(stat == "Overall_weighted") %>%
+  mutate(est_pct = 100 * est,
+         lo_pct  = 100 * (est - 1.96 * se),
+         hi_pct  = 100 * (est + 1.96 * se))
+
+byrace_wtd <- res$byrace %>%
+  filter(stat == "By_race_weighted") %>%
+  mutate(est_pct = 100 * est,
+         lo_pct  = 100 * (est - 1.96 * se),
+         hi_pct  = 100 * (est + 1.96 * se))
+
+get_race <- function(r) {
+  row <- byrace_wtd %>% filter(race == r)
+  fmt_pct(row$est_pct, row$lo_pct, row$hi_pct)
+}
+
+# --- Standardized PR/PD with delta-method SEs, MI-combined ---
+
+dat_wts <- dat_wts %>%
+  mutate(
+    race_summary_f = factor(race_summary_h, levels = 1:5, labels = ALLOWED_RACE5),
+    agecat_h       = make_agecat(age_h)
+  )
+dat_harm <- dat_harm %>% mutate(agecat_h = make_agecat(age_h))
+
+std_pops    <- compute_std_populations(dat_harm)
+outcome_var <- "cogimp_prob_fin_dx"
+imps        <- sort(unique(dat_wts$imp_h[!is.na(dat_wts$imp_h)]))
+
+prpd_perimp <- lapply(imps, function(j) {
+  d <- dat_wts %>% filter(imp_h == j, brfss_h == 0)
+  if (nrow(d) == 0) return(NULL)
+
+  cells <- d %>%
+    filter(!is.na(agecat_h), !is.na(male_h)) %>%
+    group_by(race_summary_f, agecat_h, male_h) %>%
+    summarise(
+      est = wmean_se(.data[[outcome_var]], sw_final)["est"],
+      se  = wmean_se(.data[[outcome_var]], sw_final)["se"],
+      .groups = "drop"
+    )
+  std <- standardize_from_cells_with_se(cells, std_pops$brfss_std)
+
+  ref <- std %>% filter(race_summary_f == REF_RACE)
+  if (nrow(ref) == 0) return(NULL)
+
+  p_ref  <- ref$est_std[1]
+  se_ref <- ref$se_std[1]
+
+  std %>%
+    mutate(
+      imp_h = j,
+      PR    = est_std / p_ref,
+      PD    = est_std - p_ref,
+      se_PR = sqrt((se_std^2) / (p_ref^2) +
+                   ((est_std^2) * (se_ref^2)) / (p_ref^4)),
+      se_PD = sqrt(se_std^2 + se_ref^2)
+    ) %>%
+    select(imp_h, race_summary_f, PR, PD, se_PR, se_PD)
+}) %>% bind_rows()
+
+prpd_combined <- prpd_perimp %>%
+  filter(as.character(race_summary_f) != REF_RACE) %>%
+  pivot_longer(cols = c(PR, PD, se_PR, se_PD),
+               names_to = "name", values_to = "value") %>%
+  mutate(
+    measure = if_else(name %in% c("PR", "se_PR"), "PR", "PD"),
+    field   = if_else(name %in% c("PR", "PD"),    "est", "se")
+  ) %>%
+  select(-name) %>%
+  pivot_wider(names_from = field, values_from = value) %>%
+  group_by(race_summary_f, measure) %>%
+  summarise(rubin_combine(est, se), .groups = "drop") %>%
+  mutate(
+    ci_lo = est - 1.96 * se,
+    ci_hi = est + 1.96 * se
+  )
+
+get_pr <- function(r) {
+  row <- prpd_combined %>% filter(race_summary_f == r, measure == "PR")
+  fmt_pr(row$est, row$ci_lo, row$ci_hi)
+}
+
+get_pd <- function(r) {
+  row <- prpd_combined %>% filter(race_summary_f == r, measure == "PD")
+  fmt_pd(100 * row$est, 100 * row$ci_lo, 100 * row$ci_hi)
+}
+
+# --- Misc inline values ---
+
+r_version <- paste0(R.version$major, ".", R.version$minor)
+repo_url  <- "https://github.com/lamhine/KHANDLE-weighting-multiracial"
+fig_dir   <- here("03_results", "figures")
+
+show_fig <- function(path) {
+  if (file.exists(path)) {
+    knitr::include_graphics(path)
+  } else {
+    cat("*[Figure file not found — run `02_analysis/06_results_summary.R` to generate.]*\n\n",
+        "*Expected at:* `", path, "`", sep = "")
+  }
+}
+
+# --- Main-text word count helper ---
+
+main_word_count <- function(path = here("04_manuscript", "manuscript.qmd")) {
+  lines <- readLines(path)
+  start <- which(grepl("^# Introduction\\s*$", lines))[1]
+  end_candidates <- which(grepl(">Acknowledgments</w:t>", lines, fixed = TRUE))
+  end <- end_candidates[end_candidates > start][1]
+  if (is.na(start) || is.na(end)) return(NA)
+  lines <- lines[(start + 1):(end - 1)]
+
+  lines <- lines[!grepl("^#", lines)]
+  in_raw <- FALSE
+  keep <- rep(TRUE, length(lines))
+  for (i in seq_along(lines)) {
+    if (grepl("^```\\{=openxml\\}", lines[i])) { in_raw <- TRUE; keep[i] <- FALSE }
+    else if (grepl("^```\\s*$", lines[i]) && in_raw) { in_raw <- FALSE; keep[i] <- FALSE }
+    else if (in_raw) keep[i] <- FALSE
+  }
+  text <- paste(lines[keep], collapse = " ")
+
+  text <- gsub("\\[@[^\\]]+\\]", "", text)
+  text <- gsub("`r [^`]+`", "X", text)
+  text <- gsub("\\*\\*|\\*|__|_|`", "", text)
+  text <- gsub("\\^[^\\s\\^]+\\^", "", text)
+  text <- gsub("[\\\\(){}\\[\\]]", " ", text)
+
+  words <- strsplit(trimws(text), "\\s+")[[1]]
+  length(words[nzchar(words)])
+}
+```
+
+::: {custom-style="Author"}
+**Title:** Population-based estimates of cognitive impairment among Multiracial older adults in California
+
+&nbsp;
+
+**Authors:** Tracy Lam-Hine, DrPH, MBA^1^; David H. Rehkopf, ScD, MPH^1^; Paola Gilsanz, ScD^2^; Maria M. Corrada, ScD^3^; Rachel A. Whitmer, PhD^2,4^
+
+^1^ Stanford University School of Medicine, Department of Epidemiology and Population Health\
+^2^ Kaiser Permanente Northern California, Division of Research\
+^3^ University of California, Irvine, Department of Epidemiology and Biostatistics\
+^4^ University of California, Davis, Department of Public Health Sciences
+
+&nbsp;
+
+**Corresponding author:**\
+Tracy Lam-Hine, DrPH, MBA\
+Stanford University School of Medicine, Department of Epidemiology and Population Health\
+1701 Page Mill Road, Palo Alto, CA 94304\
+lamhine\@stanford.edu
+
+&nbsp;
+
+**Article type:** Short Report
+
+**Short running title:** Cognitive impairment in Multiracial older adults
+
+**Word count (main text):** `r main_word_count()`
+
+**Tables:** 1
+
+**Figures:** 3
+
+**Financial support:** [PLACEHOLDER: funder/grant numbers — KHANDLE NIH/NIA grants and any TLH support]
+
+**Prior presentation:** Accepted for presentation at the Alzheimer's Association International Conference, 2026.
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:pStyle w:val="Heading1"/>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:t xml:space="preserve">Abstract</w:t>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Author"}
+*[Drafted last; 150 words, structured INTRODUCTION/METHODS/RESULTS/DISCUSSION per A&D Short Report guidelines.]*
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:pStyle w:val="Heading1"/>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:t xml:space="preserve">Research in Context</w:t>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Author"}
+**1. Systematic review:** We reviewed PubMed, Google Scholar, and recent reviews of cognitive aging research [@manly2022] for studies reporting cognitive impairment prevalence among Multiracial older adults. Multiracial individuals are routinely excluded from race-stratified analyses, aggregated into a heterogeneous "Other" category, or omitted from race-specific reporting entirely. We are aware of no prior population-based estimates of cognitive impairment prevalence for Multiracial older adults in any U.S. state.
+
+**2. Interpretation:** Generalizability weighting applied to an established cognitive aging cohort produces the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in California. Estimated prevalence was directionally elevated compared with monoracial White older adults, though confidence intervals were wide—a quantitative signature of persistent underrepresentation rather than population homogeneity.
+
+**3. Future directions:** Cognitive aging research and federal surveillance should oversample Multiracial older adults, retain disaggregated Multiracial categories rather than collapsing them into "Other" or "Two or more races," and report cognitive outcomes separately for the most common Multiracial subgroups (e.g., Black-White, Asian-White, AIAN-White) as sample sizes allow.
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+# Introduction
+
+The U.S. population of adults reporting two or more races grew faster than any single-race category between the 2010 and 2020 Decennial Censuses, driven by both demographic change and revisions to race measurement.[@jones2021; @parker2015] Among adults aged 65 and older, the Multiracial population is projected to grow more than fivefold between 2020 and 2060.[@vespa2020] Despite this demographic trajectory, Multiracial older adults remain largely absent from population-based estimates of cognitive impairment and dementia.[@manly2022; @power2021] Kelley and Thorpe have specifically called out the field's reliance on residual "Other" categories or single aggregated "two or more races" codes as practices that "undermine any efforts at meaningful interpretation" of cognitive aging outcomes for this rapidly growing population.[@kelley2023]
+
+Two structural features of dementia research produce this invisibility. First, large prospective cohort studies with detailed cognitive phenotyping—the only data sources capable of supporting validated impairment classification—were designed around monoracial sampling frames and typically enroll too few Multiracial participants to support race-specific inference.[@mayeda2016; @glymour2018] Second, national surveillance systems such as the Behavioral Risk Factor Surveillance System (BRFSS) and the National Health and Aging Trends Study capture race in the population at scale but lack the cognitive assessment needed to estimate impairment prevalence.[@brfss; @nhats] The combination leaves Multiracial older adults visible in the denominator of the U.S. older population but absent from the numerator of cognitive impairment estimates.
+
+Generalizability and transportability methods address this gap by combining the strengths of both data sources: rich phenotyping from a cohort study and representative coverage from a population survey.[@cole2010; @westreich2017; @stuart2011] Hayes-Larson and colleagues demonstrated this approach using the Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) cohort and the California BRFSS, generating population-representative estimates of cognitive impairment prevalence in California older adults.[@hayeslarson2022] That analysis categorized race in four groups (Asian, Black, Hispanic/Latino, White), reflecting the analytic conventions of the field but leaving Multiracial older adults unrepresented in the resulting estimates.
+
+We extend the Hayes-Larson framework in three ways. First, we add a distinct Multiracial race/ethnicity category, defined as endorsement of two or more non-Hispanic race domains in KHANDLE and a matching harmonized category in BRFSS. Second, we use updated BRFSS data (2019–2023) to reflect the most recent population composition. Third, we report age- and sex-standardized prevalence ratios and differences relative to White older adults to support equity-oriented interpretation. Our objective is to produce the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in California, while quantifying the uncertainty that remains when small subgroups are weighted to large populations.
+
+# Methods
+
+KHANDLE is a community-based cohort of older adults recruited from Kaiser Permanente Northern California membership rolls, designed to support race- and ethnicity-stratified analyses of cognitive aging.[@whitmer2022] We used KHANDLE Wave 1 data from the January 2025 data release, restricting to participants aged 65 years or older at baseline; this release includes continued enrollment since the 2021 release analyzed by Hayes-Larson et al.[@hayeslarson2022] We classified cognitive impairment using a validated probabilistic algorithm developed in KHANDLE that combines neuropsychological battery performance with adjudicated clinical diagnoses.[@mungas2021] The California BRFSS is the state implementation of the CDC's annual telephone-based health surveillance system, with sampling weights designed to support representative state-level inference.[@brfss] We pooled five years of California BRFSS microdata (2019–2023) and restricted the BRFSS sample to respondents aged 65 years or older. BRFSS provided the target population distribution for generalizability weighting; KHANDLE provided the cognitive impairment outcome, which is not measured in BRFSS.
+
+We harmonized race and ethnicity to five mutually exclusive categories (Asian, Black, Hispanic, Multiracial, White) and applied a Hispanic override, coding any respondent identifying as Hispanic as Hispanic regardless of additional race endorsements. We coded non-Hispanic respondents endorsing two or more race domains (American Indian or Alaska Native, Asian, Black, White) as Multiracial. For KHANDLE, we drew race information from structured race/ethnicity checkboxes and normalized free-text responses against a domain lookup table, manually adjudicating ambiguous responses. For BRFSS, we used the agency-harmonized race/ethnicity variable already coded to five categories. We harmonized the following covariates across sources: age, sex, educational attainment (less than high school, high school or some college, college graduate or higher), per-capita household income above the BRFSS-weighted state median, difficulty walking, and self-rated general health.
+
+We performed multiple imputation by chained equations[@vanbuuren2011] with 20 imputations and 10 iterations per chain, conducted separately within each data source before harmonization. We specified imputation methods per variable: predictive mean matching for continuous variables, logistic regression for binary variables, proportional odds for ordinal variables, and polytomous regression for unordered categorical variables. We used race and county as predictors but did not impute them, and retained BRFSS sampling weights throughout. Within each imputed dataset, we estimated inverse odds of sample selection weights (IOSW) by fitting a logistic regression for the probability of KHANDLE versus BRFSS membership, weighted by BRFSS sampling weights and including race/ethnicity, age, sex, education, the income indicator, difficulty walking, and self-rated health as predictors.[@cole2010; @westreich2017] We stabilized weights by the KHANDLE share of the pooled sample and assigned a weight of 1 to BRFSS respondents. We trimmed weights at the 1st and 99th percentiles of the KHANDLE distribution to limit variance inflation, a step necessitated by KHANDLE's substantial over-representation of college-educated adults relative to the California older population.
+
+Within each imputation, we estimated weighted marginal prevalence of cognitive impairment overall and stratified by race/ethnicity. We additionally estimated age- and sex-standardized prevalence ratios and prevalence differences relative to White older adults, using the BRFSS age (65–74, 75–84, 85+) by sex distribution as the standard population. We computed within-imputation standard errors using a Horvitz-Thompson approximation,[@horvitz1952] combined estimates and standard errors across imputations using Rubin's rules,[@rubin1987] and computed standard errors for ratios and differences using the delta method. We assessed covariate balance using a single population-level standardized mean difference per covariate.
+
+To validate the pipeline, we re-ran the analysis using the 2014–2018 California BRFSS years from Hayes-Larson et al.[@hayeslarson2022] The unweighted KHANDLE prevalence estimate reproduced the published value exactly (24.8%) and preserved the rank ordering of race-specific weighted prevalence; small differences in weighted estimates (0.8 to 3.0 percentage points across race groups) reflect redistribution of monoracial groups after the addition of the Multiracial category. We performed all analyses in R version `r r_version`; code is available at `r repo_url`.
+
+# Results
+
+The analytic sample comprised `r fmt_n(n_khandle)` KHANDLE participants and `r fmt_n(n_brfss)` BRFSS respondents aged 65 or older (**Table 1**). Multiracial participants represented `r fmt_n(n_mr_khandle)` (`r fmt_pctn(pct_mr_khandle)`%) of the KHANDLE analytic sample and `r fmt_n(n_mr_brfss)` (`r fmt_pctn(pct_mr_brfss)`%) of the BRFSS sample.
+
+Generalizability weighting substantially improved overall covariate balance between KHANDLE and the California BRFSS target population (**Figure 1**). The largest unweighted imbalances were in educational attainment (KHANDLE over-represented college graduates and under-represented respondents with less than high school education), per-capita income above the state median, and exercise. After weighting, standardized mean differences for most covariates fell within ±0.1, with residual imbalance concentrated in the lowest education category—a known consequence of trimming weights in cohorts with limited socioeconomic overlap.
+
+Generalized to the California BRFSS older adult population, the marginal prevalence of cognitive impairment was `r fmt_pct(overall_wtd$est_pct, overall_wtd$lo_pct, overall_wtd$hi_pct)` overall (**Figure 2**). Generalized prevalence varied across racial and ethnic groups: `r get_race("Black")` among Black older adults, `r get_race("Multiracial")` among Multiracial older adults, `r get_race("Asian")` among Asian older adults, `r get_race("White")` among White older adults, and `r get_race("Hispanic")` among Hispanic older adults. The Multiracial estimate was the most imprecise of the race-specific estimates, reflecting the small Multiracial sample in KHANDLE prior to weighting.
+
+After age and sex standardization to the BRFSS population, prevalence ratios relative to White older adults were elevated for Black (PR `r get_pr("Black")`) and Asian (PR `r get_pr("Asian")`) older adults (**Figure 3**). Estimates for Hispanic (PR `r get_pr("Hispanic")`) and Multiracial (PR `r get_pr("Multiracial")`) older adults were directionally consistent with elevated prevalence but had wide confidence intervals spanning the null. Standardized prevalence differences followed the same pattern: Black–White (PD `r get_pd("Black")`) and Asian–White (PD `r get_pd("Asian")`) differences were clearly positive, while Hispanic–White (PD `r get_pd("Hispanic")`) and Multiracial–White (PD `r get_pd("Multiracial")`) differences were positive but imprecise.
+
+# Discussion
+
+This analysis produces, to our knowledge, the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in any U.S. state. Generalizing the KHANDLE cohort to the California older adult population using inverse odds of selection weighting yielded a generalized prevalence of cognitive impairment of `r get_race("Multiracial")` among Multiracial older adults, directionally elevated compared with White older adults (`r get_race("White")`) but with a confidence interval too wide to support strong conclusions about subgroup-specific risk. The same weighting framework reproduced expected patterns for Asian, Black, Hispanic, and White older adults, consistent with prior analyses.[@hayeslarson2022; @mayeda2016]
+
+Documenting the scale and distribution of a health problem in the population is a foundational step in any health disparities research agenda — a prerequisite for the mechanistic explanation and intervention work that should follow.[@braveman2006; @kilbourne2006] These estimates therefore contribute more than descriptive value: they identify Multiracial older adults as a target population in whom subsequent investigations of mechanism — discrimination experiences, racial identity stress, social connectedness, and differential access to specialty cognitive care — and intervention — culturally responsive screening, caregiver support, and Alzheimer's disease and related dementias (ADRD) outreach — can be designed. A generalized prevalence near `r sprintf("%.0f", byrace_wtd %>% filter(race == "Multiracial") %>% pull(est_pct))`%, directionally consistent with the elevation observed for Black older adults — for whom such targeted screening and outreach programs already exist — supports explicitly naming Multiracial older adults as a target population in those programs rather than absorbing them into residual race categories.
+
+The substantive result—a point estimate of elevated cognitive impairment prevalence among Multiracial older adults, bracketed by wide confidence intervals—is itself a quantitative artifact of persistent underrepresentation. Wide intervals here do not signal that Multiracial older adults are a homogeneously low-burden group; they signal that the underlying cohort contributes too few Multiracial participants to support precise inference. This is precisely the tension Kelley and Thorpe describe in their critique of quantitative aging research's reliance on statistical significance: they argue that researchers should "report—and be fully transparent about—the magnitude of differences between groups" rather than treating wide intervals or non-significant p-values as grounds for omitting estimates from reporting.[@kelley2023] Treating uncertainty as evidence of inclusion rather than as caution against reporting is essential to ending the field's reliance on convenience-driven race aggregation.
+
+Several limitations bound interpretation. Race classification depends on what was asked and how responses were structured: KHANDLE used structured race domains supplemented with free-text adjudication, while BRFSS relies on a single harmonized variable, so differential measurement of Multiracial identification between the two sources could shift the Multiracial denominator in either direction. The Multiracial category aggregates a heterogeneous set of combinations (Black-White, Asian-White, AIAN-White, and others), each with distinct social, geographic, and health profiles,[@liebler2017; @subica2017] concealing subgroup variation that may be substantively important. KHANDLE is drawn from Kaiser Permanente Northern California members, so generalized estimates apply to the California older adult population and should not be extrapolated to states with different racial/ethnic composition, insurance coverage, or health system context. Standard transportability assumptions—conditional exchangeability of the outcome model across source and target given measured covariates, and positivity—are not directly testable and remain a source of residual bias. The cognitive impairment algorithm was developed and validated in KHANDLE itself,[@mungas2021] and its portability to populations outside the KHANDLE sampling frame is an active area of research.
+
+These limitations point to a sequenced research agenda for closing the gap. First, with existing data, researchers should report disaggregated estimates for the most common Multiracial combinations (Black-White, Asian-White, AIAN-White) wherever sample sizes permit, rather than presenting a single aggregated Multiracial category. Second, federal surveillance systems should retain disaggregated Multiracial categories in public-use microdata rather than collapsing them into "Other" or "Two or more races" reporting bins, so that target-population denominators remain available for generalizability work in future years. Third, cognitive aging cohorts in active recruitment or wave-replenishment phases should oversample Multiracial older adults rather than relying on incidental enrollment. Fourth, cohorts adding measurement modules should include the kinds of upstream variables Kelley and Thorpe identify as essential for mechanistic explanation — racial identity, experiences of racial discrimination, and detailed life-history data — to enable future studies of *why* elevated cognitive impairment risk is observed in Multiracial older adults.[@kelley2023] Finally, the methodological framework demonstrated here can be applied to other cohort–surveillance pairings (e.g., Health and Retirement Study to NHIS, ROS/MAP to NHATS) to produce population-representative estimates for Multiracial older adults beyond California.
+
+Generalizability weighting enables population-representative inference from cognitive aging cohorts while preserving subgroup detail for understudied populations. Applying this approach to KHANDLE and the California BRFSS produced the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in California, with a directionally elevated point estimate and wide confidence intervals that themselves document persistent underrepresentation. Closing this gap will require deliberate oversampling of Multiracial older adults in cognitive aging research, retention of disaggregated Multiracial categories in federal surveillance, and analytic conventions that report Multiracial estimates separately rather than absorbing them into residual race categories.
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:pStyle w:val="Heading1"/>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:t xml:space="preserve">Acknowledgments</w:t>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Author"}
+**Conflict of Interest Statement:** The authors declare no conflicts of interest. [PLACEHOLDER: confirm with all co-authors before submission.]
+
+**Role of Funder:** Funders had no involvement in the study's conceptualization, design, analysis, or interpretation of results.
+
+**Access to Data:** TLH had full access to the analytic datasets derived from KHANDLE and California BRFSS used in this manuscript and takes responsibility for the integrity of the analysis and figures presented.
+
+**Data Sharing Statement:** KHANDLE data are available to qualified researchers via the KHANDLE data access process. California BRFSS microdata are publicly available from the California Department of Public Health. Analysis code is publicly available at `r repo_url`.
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:pStyle w:val="Heading1"/>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:t xml:space="preserve">References</w:t>
+  </w:r>
+</w:p>
+```
+::: {#refs}
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Table Caption"}
+**Table 1.** Characteristics of Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and California Behavioral Risk Factor Surveillance System (CA-BRFSS, 2019–2023) participants aged 65 years and older. KHANDLE percentages are averaged across 20 multiply imputed samples; CA-BRFSS percentages are weighted using BRFSS sampling weights to be representative of California adults aged 65 and older.
+:::
+
+```{r tbl1}
+khandle <- dat_harm %>% filter(brfss_h == 0, imp_h >= 1)
+brfss   <- dat_harm %>% filter(brfss_h == 1, imp_h >= 1)
+
+n_k <- khandle %>% filter(imp_h == 1) %>% nrow()
+n_b <- brfss   %>% filter(imp_h == 1) %>% nrow()
+
+prop_imp <- function(d, var, level, wt = NULL) {
+  d %>%
+    group_by(imp_h) %>%
+    summarise(
+      p = if (is.null(wt)) {
+        mean(.data[[var]] == level, na.rm = TRUE)
+      } else {
+        ok <- !is.na(.data[[var]])
+        sum((.data[[var]] == level) * .data[[wt]] * ok, na.rm = TRUE) /
+          sum(.data[[wt]] * ok, na.rm = TRUE)
+      },
+      .groups = "drop"
+    ) %>%
+    summarise(p = mean(p, na.rm = TRUE)) %>%
+    pull(p)
+}
+
+cont_stat <- function(d, var, wt = NULL) {
+  s <- d %>%
+    group_by(imp_h) %>%
+    summarise(
+      m = if (is.null(wt)) mean(.data[[var]], na.rm = TRUE)
+          else weighted.mean(.data[[var]], .data[[wt]], na.rm = TRUE),
+      s = if (is.null(wt)) sd(.data[[var]], na.rm = TRUE)
+          else {
+            mu <- weighted.mean(.data[[var]], .data[[wt]], na.rm = TRUE)
+            ok <- !is.na(.data[[var]])
+            sqrt(sum(.data[[wt]] * (.data[[var]] - mu)^2 * ok, na.rm = TRUE) /
+                 sum(.data[[wt]] * ok, na.rm = TRUE))
+          },
+      .groups = "drop"
+    ) %>%
+    summarise(m = mean(m, na.rm = TRUE), s = mean(s, na.rm = TRUE))
+  list(m = s$m, s = s$s)
+}
+
+mk_pct <- function(label, var, level = 1) {
+  k <- prop_imp(khandle, var, level)
+  b <- prop_imp(brfss,   var, level, wt = "brfss_sampwt_h")
+  tibble(Characteristic = label,
+         KHANDLE = sprintf("%.1f", 100 * k),
+         BRFSS   = sprintf("%.1f", 100 * b))
+}
+
+mk_cont <- function(label, var) {
+  k <- cont_stat(khandle, var)
+  b <- cont_stat(brfss,   var, wt = "brfss_sampwt_h")
+  tibble(Characteristic = label,
+         KHANDLE = sprintf("%.1f (%.1f)", k$m, k$s),
+         BRFSS   = sprintf("%.1f (%.1f)", b$m, b$s))
+}
+
+mk_section <- function(label) {
+  tibble(Characteristic = label, KHANDLE = "", BRFSS = "")
+}
+
+tbl1 <- bind_rows(
+  mk_section("Race/ethnicity, %"),
+  mk_pct("  Asian",       "race_summary_h", level = 1),
+  mk_pct("  Black",       "race_summary_h", level = 2),
+  mk_pct("  Hispanic",    "race_summary_h", level = 3),
+  mk_pct("  White",       "race_summary_h", level = 4),
+  mk_pct("  Multiracial", "race_summary_h", level = 5),
+
+  mk_cont("Age, mean (SD)", "age_h"),
+  mk_pct ("Male, %",        "male_h"),
+
+  mk_section("Educational attainment, %"),
+  mk_pct("  Less than high school",         "education3_h", level = "1"),
+  mk_pct("  High school diploma/GED",       "education3_h", level = "2"),
+  mk_pct("  Trade school/some college",     "education3_h", level = "3"),
+  mk_pct("  College graduate or higher",    "education3_h", level = "4"),
+
+  mk_pct("Per-capita income above BRFSS median, %", "income_gtmed_pp_h"),
+  mk_pct("Married/living with partner, %",          "marital_h"),
+  mk_pct("Military service, %",                     "military_h"),
+
+  mk_section("Health-related, %"),
+  mk_pct("  Self-rated health good or better",     "goodhealth_h"),
+  mk_pct("  Difficulty walking/climbing stairs",   "adl_walking_h"),
+  mk_pct("  Blind or serious vision impairment",   "blind_h"),
+  mk_pct("  Difficulty dressing",                  "adl_dressing_h"),
+  mk_pct("  Current smoker",                       "smoke_status_h"),
+  mk_pct("  Exercised in the last month",          "exercise_h")
+)
+
+flextable(tbl1) %>%
+  set_header_labels(
+    Characteristic = "Characteristic",
+    KHANDLE = paste0("KHANDLE\n(N = ", format(n_k, big.mark = ","), ")"),
+    BRFSS   = paste0("CA-BRFSS\n(N = ", format(n_b, big.mark = ","), ")")
+  ) %>%
+  align(j = c("KHANDLE", "BRFSS"), align = "right", part = "all") %>%
+  align(j = "Characteristic", align = "left", part = "all") %>%
+  flextable::font(fontname = "Times New Roman", part = "all") %>%
+  fontsize(size = 11, part = "all") %>%
+  padding(padding = 2, part = "all") %>%
+  autofit()
+```
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Image Caption"}
+**Figure 1.** Marginal covariate balance (standardized mean differences) between Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and California Behavioral Risk Factor Surveillance System (CA-BRFSS), shown for unweighted KHANDLE and after applying inverse odds of selection weights to KHANDLE. Standardized mean differences are computed as (KHANDLE mean − BRFSS mean) / SD[BRFSS] and represent the population-level imbalance for each covariate.
+:::
+
+::: {custom-style="Compact"}
+```{r fig1}
+#| fig-align: left
+#| results: asis
+show_fig(file.path(fig_dir, paste0("Figure1_covariate_balance_overall_", tag, ".png")))
+```
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Image Caption"}
+**Figure 2.** Estimates of cognitive impairment prevalence in unweighted Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and generalized to the California Behavioral Risk Factor Surveillance System (CA-BRFSS) target population, overall and stratified by race and ethnicity. Vertical bars are 95% confidence intervals constructed using Rubin's rules across 20 imputations.
+:::
+
+::: {custom-style="Compact"}
+```{r fig2}
+#| fig-align: left
+#| results: asis
+show_fig(file.path(fig_dir, paste0("Figure2_prevalence_unweighted_vs_generalized_", tag, ".png")))
+```
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+  <w:r>
+    <w:br w:type="page"/>
+  </w:r>
+</w:p>
+```
+::: {custom-style="Image Caption"}
+**Figure 3.** Age- and sex-standardized prevalence ratios (PR, left panel) and prevalence differences (PD, right panel) for cognitive impairment relative to White older adults, comparing unweighted KHANDLE estimates and estimates generalized to the California BRFSS population. Standardization uses the BRFSS age (65–74, 75–84, 85+) by sex distribution as the standard population. Vertical bars are 95% confidence intervals.
+:::
+
+::: {custom-style="Compact"}
+```{r fig3}
+#| fig-align: left
+#| results: asis
+show_fig(file.path(fig_dir, paste0("Figure3_pr_pd_vs_white_", tag, ".png")))
+```
+:::
+
+```{=openxml}
+<w:p>
+  <w:pPr>
+    <w:suppressLineNumbers/>
+  </w:pPr>
+</w:p>
+```

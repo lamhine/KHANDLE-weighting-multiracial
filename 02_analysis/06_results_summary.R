@@ -201,14 +201,16 @@ for (tag in tags) {
     collapse_covbal_to_overall(type = covbal$type) %>%
     group_by(var, wtd) %>%
     summarise(mean_smd = mean(std_eff_sz, na.rm = TRUE), .groups = "drop") %>%
-    mutate(wtd = factor(wtd, levels = c("Unweighted", "Weighted")))
+    mutate(
+      wtd = factor(wtd, levels = c("Unweighted", "Weighted")),
+      var_label = pretty_covar_factor(var)
+    )
 
-  fig1 <- ggplot(plotdat, aes(x = mean_smd, y = var, colour = wtd)) +
+  fig1 <- ggplot(plotdat, aes(x = mean_smd, y = var_label, colour = wtd)) +
     geom_vline(xintercept = 0) +
     geom_point(size = 2.4, position = position_dodge(width = 0.35)) +
     theme_bw() +
     labs(
-      title = paste0("Figure 1. Overall covariate balance before and after generalizability weighting (", tag, ")"),
       x = "Standardized mean difference (KHANDLE - BRFSS) / SD[BRFSS]",
       y = NULL,
       colour = NULL
@@ -309,10 +311,7 @@ for (tag in tags) {
     tabA_path
   )
 
-  fig2 <- plot_prev_unw_wtd(
-    prev_tbl_unstd,
-    title = paste0("Figure 2. Cognitive impairment prevalence: unweighted KHANDLE vs generalized to CA-BRFSS (", tag, ")")
-  )
+  fig2 <- plot_prev_unw_wtd(prev_tbl_unstd)
 
   fig2_path <- file.path(fig_dir, paste0("Figure2_prevalence_unweighted_vs_generalized_", tag, ".png"))
   ggsave(fig2_path, plot = fig2, width = 9, height = 5.5, dpi = 300)
@@ -480,7 +479,6 @@ plot_prpd <- function(df, tag) {
     facet_wrap(~ measure, scales = "free_y", nrow = 1) +
     theme_bw() +
     labs(
-      title = paste0("Figure 3. Age- and sex-adjusted PR/PD vs White (", tag, ")"),
       x = NULL,
       y = NULL,
       colour = NULL
@@ -630,8 +628,7 @@ figS1 <- ggplot(prev_std_tbl, aes(x = group, y = est_pct)) +
   theme_bw() +
   labs(
     x = NULL,
-    y = "Prevalence (%) (age/sex standardized to BRFSS)",
-    title = "Figure S1. Cognitive impairment prevalence (age/sex standardized to BRFSS)"
+    y = "Prevalence (%) (age/sex standardized to BRFSS)"
   )
 
 figS1_path <- file.path(supp_dir, paste0("FigureS1_prevalence_age_sex_standardized_to_BRFSS_", tagset_label, ".png"))
