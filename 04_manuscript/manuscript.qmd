@@ -217,7 +217,7 @@ main_word_count <- function(path = here("04_manuscript", "manuscript.qmd")) {
 ::: {custom-style="Author"}
 **Title:** Population-based estimates of cognitive impairment among Multiracial older adults in California
 
-&nbsp;
+ 
 
 **Authors:** Tracy Lam-Hine, DrPH, MBA^1^; David H. Rehkopf, ScD, MPH^1^; Paola Gilsanz, ScD^2^; Maria M. Corrada, ScD^3^; Rachel A. Whitmer, PhD^2,4^
 
@@ -226,7 +226,7 @@ main_word_count <- function(path = here("04_manuscript", "manuscript.qmd")) {
 ^3^ University of California, Irvine, Department of Epidemiology and Biostatistics\
 ^4^ University of California, Davis, Department of Public Health Sciences
 
-&nbsp;
+ 
 
 **Corresponding author:**\
 Tracy Lam-Hine, DrPH, MBA\
@@ -234,7 +234,7 @@ Stanford University School of Medicine, Department of Epidemiology and Populatio
 1701 Page Mill Road, Palo Alto, CA 94304\
 lamhine\@stanford.edu
 
-&nbsp;
+ 
 
 **Article type:** Short Report
 
@@ -246,7 +246,7 @@ lamhine\@stanford.edu
 
 **Figures:** 3
 
-**Financial support:** [PLACEHOLDER: funder/grant numbers — KHANDLE NIH/NIA grants and any TLH support]
+**Financial support:** KHANDLE is supported by National Institute on Aging grant number R01AG052132. No funding was received for this analysis.
 
 **Prior presentation:** Accepted for presentation at the Alzheimer's Association International Conference, 2026.
 :::
@@ -273,7 +273,7 @@ lamhine\@stanford.edu
 </w:p>
 ```
 ::: {custom-style="Author"}
-*[Drafted last; 150 words, structured INTRODUCTION/METHODS/RESULTS/DISCUSSION per A&D Short Report guidelines.]*
+*\[Drafted last; 150 words, structured INTRODUCTION/METHODS/RESULTS/DISCUSSION per A&D Short Report guidelines.\]*
 :::
 
 ```{=openxml}
@@ -298,11 +298,11 @@ lamhine\@stanford.edu
 </w:p>
 ```
 ::: {custom-style="Author"}
-**1. Systematic review:** We reviewed PubMed, Google Scholar, and recent reviews of cognitive aging research [@manly2022] for studies reporting cognitive impairment prevalence among Multiracial older adults. Multiracial individuals are routinely excluded from race-stratified analyses, aggregated into a heterogeneous "Other" category, or omitted from race-specific reporting entirely. We are aware of no prior population-based estimates of cognitive impairment prevalence for Multiracial older adults in any U.S. state.
+**1. Systematic review:** We reviewed PubMed, Google Scholar, and recent reviews of cognitive aging research for studies reporting cognitive impairment prevalence among Multiracial older adults. Multiracial individuals are frequently excluded from race-stratified analyses, aggregated into a heterogeneous "Other" category, or omitted from race-specific reporting entirely. We are not aware of any prior population-based prevalence estimates of objective cognitive impairment for Multiracial older adults in any U.S. state.
 
-**2. Interpretation:** Generalizability weighting applied to an established cognitive aging cohort produces the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in California. Estimated prevalence was directionally elevated compared with monoracial White older adults, though confidence intervals were wide—a quantitative signature of persistent underrepresentation rather than population homogeneity.
+**2. Interpretation:** By updating a generalizability weighting approach used with an established cognitive aging cohort, we produce the first population-based estimates of objective cognitive impairment prevalence among Multiracial older adults in California. Prevalence was directionally elevated compared to White participants. Wide confidence intervals hightlight the need for greater inclusion of Multiracial adults in Alzheimer's Disease (AD) and AD-related dementia research.
 
-**3. Future directions:** Cognitive aging research and federal surveillance should oversample Multiracial older adults, retain disaggregated Multiracial categories rather than collapsing them into "Other" or "Two or more races," and report cognitive outcomes separately for the most common Multiracial subgroups (e.g., Black-White, Asian-White, AIAN-White) as sample sizes allow.
+**3. Future directions:** Cognitive aging research and federal surveillance should oversample Multiracial older adults, retain disaggregated Multiracial categories rather than collapsing them into "Other" or "Two or more races," and report cognitive outcomes separately for common Multiracial subgroups (e.g., AIAN-White, Asian-White, Black-White) as sample sizes allow.
 :::
 
 ```{=openxml}
@@ -317,9 +317,9 @@ lamhine\@stanford.edu
 ```
 # Introduction
 
-The U.S. population of adults reporting two or more races grew faster than any single-race category between the 2010 and 2020 Decennial Censuses, driven by both demographic change and revisions to race measurement.[@jones2021; @parker2015] Among adults aged 65 and older, the Multiracial population is projected to grow more than fivefold between 2020 and 2060.[@vespa2020] Despite this demographic trajectory, Multiracial older adults remain largely absent from population-based estimates of cognitive impairment and dementia.[@manly2022; @power2021] Kelley and Thorpe have specifically called out the field's reliance on residual "Other" categories or single aggregated "two or more races" codes as practices that "undermine any efforts at meaningful interpretation" of cognitive aging outcomes for this rapidly growing population.[@kelley2023]
+The U.S. population of Multiracial (two or more race) adults grew 276% between the 2010 and 2020 Decennial Censuses: faster than any other racial or ethnic category, and driven by both real demographic change and changes to measurement of race.[@jones2021; @pewresearchcenter2015] Among adults aged 65 and older, the Multiracial population is projected to continue growing rapidly between 2020 and 2060.[@vespa2020] Despite this demographic trajectory, Multiracial older adults remain largely absent from population-based estimates of cognitive impairment and dementia.
 
-Two structural features of dementia research produce this invisibility. First, large prospective cohort studies with detailed cognitive phenotyping—the only data sources capable of supporting validated impairment classification—were designed around monoracial sampling frames and typically enroll too few Multiracial participants to support race-specific inference.[@mayeda2016; @glymour2018] Second, national surveillance systems such as the Behavioral Risk Factor Surveillance System (BRFSS) and the National Health and Aging Trends Study capture race in the population at scale but lack the cognitive assessment needed to estimate impairment prevalence.[@brfss; @nhats] The combination leaves Multiracial older adults visible in the denominator of the U.S. older population but absent from the numerator of cognitive impairment estimates.
+However, two additional characteristics of research on Alzheimer's Disease (AD) and AD-related dementias (ADRD) contribute to this invisibility. First, large prospective cohort studies with detailed neuropsychological testing typically enroll few to no Multiracial participants, preventing to support meaningful inference.[@mayeda2016; @glymour2018] Second, national surveillance systems such as the Behavioral Risk Factor Surveillance System (BRFSS) and the National Health and Aging Trends Study capture race in the population at scale but lack the cognitive assessment needed to estimate impairment prevalence.[@brfss; @nhats] The combination leaves Multiracial older adults visible in the denominator of the U.S. older population but absent from the numerator of cognitive impairment estimates.
 
 Generalizability and transportability methods address this gap by combining the strengths of both data sources: rich phenotyping from a cohort study and representative coverage from a population survey.[@cole2010; @westreich2017; @stuart2011] Hayes-Larson and colleagues demonstrated this approach using the Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) cohort and the California BRFSS, generating population-representative estimates of cognitive impairment prevalence in California older adults.[@hayeslarson2022] That analysis categorized race in four groups (Asian, Black, Hispanic/Latino, White), reflecting the analytic conventions of the field but leaving Multiracial older adults unrepresented in the resulting estimates.
 
@@ -350,6 +350,8 @@ After age and sex standardization to the BRFSS population, prevalence ratios rel
 # Discussion
 
 This analysis produces, to our knowledge, the first population-based estimates of cognitive impairment prevalence among Multiracial older adults in any U.S. state. Generalizing the KHANDLE cohort to the California older adult population using inverse odds of selection weighting yielded a generalized prevalence of cognitive impairment of `r get_race("Multiracial")` among Multiracial older adults, directionally elevated compared with White older adults (`r get_race("White")`) but with a confidence interval too wide to support strong conclusions about subgroup-specific risk. The same weighting framework reproduced expected patterns for Asian, Black, Hispanic, and White older adults, consistent with prior analyses.[@hayeslarson2022; @mayeda2016]
+
+This absence can be attributed at least in part to the lack of prior guidance on how to account for the Multiracial population, leading to erasure of this group's experience from .[@kelley2023; @lam-hine2024]
 
 Documenting the scale and distribution of a health problem in the population is a foundational step in any health disparities research agenda — a prerequisite for the mechanistic explanation and intervention work that should follow.[@braveman2006; @kilbourne2006] These estimates therefore contribute more than descriptive value: they identify Multiracial older adults as a target population in whom subsequent investigations of mechanism — discrimination experiences, racial identity stress, social connectedness, and differential access to specialty cognitive care — and intervention — culturally responsive screening, caregiver support, and Alzheimer's disease and related dementias (ADRD) outreach — can be designed. A generalized prevalence near `r sprintf("%.0f", byrace_wtd %>% filter(race == "Multiracial") %>% pull(est_pct))`%, directionally consistent with the elevation observed for Black older adults — for whom such targeted screening and outreach programs already exist — supports explicitly naming Multiracial older adults as a target population in those programs rather than absorbing them into residual race categories.
 
@@ -383,7 +385,7 @@ Generalizability weighting enables population-representative inference from cogn
 </w:p>
 ```
 ::: {custom-style="Author"}
-**Conflict of Interest Statement:** The authors declare no conflicts of interest. [PLACEHOLDER: confirm with all co-authors before submission.]
+**Conflict of Interest Statement:** The authors declare no conflicts of interest. \[PLACEHOLDER: confirm with all co-authors before submission.\]
 
 **Role of Funder:** Funders had no involvement in the study's conceptualization, design, analysis, or interpretation of results.
 
@@ -548,7 +550,7 @@ flextable(tbl1) %>%
 </w:p>
 ```
 ::: {custom-style="Image Caption"}
-**Figure 1.** Marginal covariate balance (standardized mean differences) between Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and California Behavioral Risk Factor Surveillance System (CA-BRFSS), shown for unweighted KHANDLE and after applying inverse odds of selection weights to KHANDLE. Standardized mean differences are computed as (KHANDLE mean − BRFSS mean) / SD[BRFSS] and represent the population-level imbalance for each covariate.
+**Figure 1.** Marginal covariate balance (standardized mean differences) between Kaiser Healthy Aging and Diverse Life Experiences (KHANDLE) and California Behavioral Risk Factor Surveillance System (CA-BRFSS), shown for unweighted KHANDLE and after applying inverse odds of selection weights to KHANDLE. Standardized mean differences are computed as (KHANDLE mean − BRFSS mean) / SD\[BRFSS\] and represent the population-level imbalance for each covariate.
 :::
 
 ::: {custom-style="Compact"}
