@@ -5,6 +5,9 @@
 .Ruserdata
 .DS_Store
 
+# Claude Code scratch (worktrees, session state)
+.claude/
+
 # Personal paths (contains Box paths specific to each user)
 config/config.R
 
